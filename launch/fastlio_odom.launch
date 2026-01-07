@@ -1,0 +1,17 @@
+<launch>
+    <arg name="ct_odom_source" default="$(optenv CT_ODOM_SOURCE fastlio)" />
+    <arg name="ct_perception_sensor" default="$(optenv CT_PERCEPTION_SENSOR livox_mid360)" />
+    
+    <group if="$(eval arg('ct_odom_source') == 'fastlio' and arg('ct_perception_sensor') == 'livox_mid360')">
+        
+        <node pkg="fast_lio" type="fastlio_mapping" name="fastlio_mapping" 
+              output="screen">
+            <rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
+        </node>
+        
+        <!-- 静态 TF: odom_2D -> camera_init (与 odom_2D 对齐) -->
+        <node pkg="tf" type="static_transform_publisher" name="tf_odom2d_camera_init" 
+              args="0 0 0 0 0 0 odom_2D camera_init 100" />
+    </group>
+    
+</launch>
