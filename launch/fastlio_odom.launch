@@ -9,9 +9,9 @@
             <rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
         </node>
         
-        <!-- 静态 TF: odom_2D -> camera_init (与 odom_2D 对齐) -->
-        <node pkg="tf" type="static_transform_publisher" name="tf_odom2d_camera_init" 
-              args="0 0 0 0 0 0 odom_2D camera_init 100" />
+        <!-- 静态 TF: odom_2D -> odom_fastlio_base (让 FAST-LIO 的 odom 与 odom_2D 对齐) -->
+        <node pkg="tf" type="static_transform_publisher" name="tf_odom2d_fastlio" 
+              args="0 0 0 0 0 0 odom_2D odom_fastlio_base 100" />
     </group>
     
 </launch>

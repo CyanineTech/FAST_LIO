@@ -860,7 +860,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
-    ros::NodeHandle nh;
+    ros::NodeHandle nh("~");
 
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
 
