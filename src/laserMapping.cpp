@@ -686,33 +686,67 @@ void publish_odometry_base_footprint(const ros::Publisher & pubOdomAftMapped)
         return; 
     }
     
-    // 获取 camera_init → body (front_up_scanner_delta) 的变换
+    // 获取 camera_init → body (Algorithm Body / IMU Frame) 的变换
     tf::Transform T_camera_to_body;
-    T_camera_to_body.setOrigin(tf::Vector3(
-        state_point.pos(0),
-        state_point.pos(1),
-        state_point.pos(2)
-    ));
-    T_camera_to_body.setRotation(tf::Quaternion(
-        geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w
-    ));
+    T_camera_to_body.setOrigin(tf::Vector3(state_point.pos(0), state_point.pos(1), state_point.pos(2)));
+    T_camera_to_body.setRotation(tf::Quaternion(geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w));
     
-    tf::Transform T_odom_base_to_base_3d = T_body_to_base.inverse() * T_camera_to_body * T_body_to_base;
     
-    // 只保留 2D 部分 (x, y, yaw)，z = 0
+    // extrinsic_R 是 Sensor 在 AlgBody 中的旋转 (R_L_I)
+    tf::Matrix3x3 R_ext(
+        extrinR[0], extrinR[1], extrinR[2],
+        extrinR[3], extrinR[4], extrinR[5],
+        extrinR[6], extrinR[7], extrinR[8]
+    );
+    tf::Vector3 T_ext_vec(extrinT[0], extrinT[1], extrinT[2]);
+    tf::Transform T_AlgBody_to_Sensor(R_ext, T_ext_vec);
+
+    // 2. 结合 TF 得到 T_AlgBody_to_Base
+    tf::Transform T_AlgBody_to_Base = T_AlgBody_to_Sensor * T_body_to_base;
+
+    // 3. 计算最终的 camera_init -> base_footprint 3D 变换
+    tf::Transform T_odom_base_to_base_3d = T_camera_to_body * T_AlgBody_to_Base;
+    
+    // --- 2D 提取与从零开始 (Zeroing) ---
     tf::Vector3 pos_3d = T_odom_base_to_base_3d.getOrigin();
     tf::Quaternion q_3d = T_odom_base_to_base_3d.getRotation();
     
-    // 提取 yaw 并创建纯 yaw 四元数
+    // 提取 Yaw
     double roll, pitch, yaw;
     tf::Matrix3x3(q_3d).getRPY(roll, pitch, yaw);
-    tf::Quaternion q_2d;
-    q_2d.setRPY(0, 0, yaw);
+
+    // 记录初始位姿，用于减去初始偏移，保证 odom 从 0 开始
+    static bool first_pose_captured = false;
+    static double initial_yaw = 0.0;
+    static tf::Vector3 initial_pos(0,0,0);
+
+    if (!first_pose_captured) {
+        initial_yaw = yaw;
+        initial_pos = pos_3d;
+        first_pose_captured = true;
+    }
+
+    // 坐标系转换: World Frame -> Odom Frame (Local)
+    // 1. 位置去偏
+    double dx = pos_3d.x() - initial_pos.x();
+    double dy = pos_3d.y() - initial_pos.y();
+
+    // 2. 旋转去偏 (移除初始 Yaw，将 dx, dy 项目到局部 Odom 系)
+    // x_odom = dx * cos(-init_yaw) - dy * sin(-init_yaw)
+    double cos_val = cos(-initial_yaw);
+    double sin_val = sin(-initial_yaw);
+    double x_odom = dx * cos_val - dy * sin_val;
+    double y_odom = dx * sin_val + dy * cos_val;
+    double yaw_odom = yaw - initial_yaw;
     
-    // 发布 TF: odom_fastlio_base → base_footprint_fastlio
+    // 重组 2D 四元数
+    tf::Quaternion q_2d;
+    q_2d.setRPY(0, 0, yaw_odom);
+    
+    // 发布 TF
     static tf::TransformBroadcaster br_base;
     tf::Transform T_odom_to_base_2d;
-    T_odom_to_base_2d.setOrigin(tf::Vector3(pos_3d.x(), pos_3d.y(), 0.0));
+    T_odom_to_base_2d.setOrigin(tf::Vector3(x_odom, y_odom, 0.0));
     T_odom_to_base_2d.setRotation(q_2d);
     
     br_base.sendTransform(tf::StampedTransform(
@@ -728,8 +762,8 @@ void publish_odometry_base_footprint(const ros::Publisher & pubOdomAftMapped)
     odomBase.header.frame_id = "odom_fastlio_base";
     odomBase.child_frame_id = "base_footprint_fastlio";
     
-    odomBase.pose.pose.position.x = pos_3d.x();
-    odomBase.pose.pose.position.y = pos_3d.y();
+    odomBase.pose.pose.position.x = x_odom;
+    odomBase.pose.pose.position.y = y_odom;
     odomBase.pose.pose.position.z = 0.0;
     odomBase.pose.pose.orientation.x = q_2d.x();
     odomBase.pose.pose.orientation.y = q_2d.y();
