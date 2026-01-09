@@ -707,9 +707,23 @@ void publish_odometry_base_footprint(const ros::Publisher & pubOdomAftMapped)
     // 3. 计算最终的 camera_init -> base_footprint 3D 变换
     tf::Transform T_odom_base_to_base_3d = T_camera_to_body * T_AlgBody_to_Base;
     
+    static tf::Transform T_FlipWorld;
+    static bool flip_init = false;
+    if (!flip_init) {
+        T_FlipWorld.setIdentity();
+        tf::Quaternion q_flip;
+        q_flip.setRPY(M_PI, 0, 0); // Roll 180
+        T_FlipWorld.setRotation(q_flip);
+        flip_init = true;
+    }
+    
+    // T_UprightWorld_to_Base = T_Upright_to_CamInit * T_CamInit_to_Base
+    tf::Transform T_Upright_Base = T_FlipWorld * T_odom_base_to_base_3d;
+
     // --- 2D 提取与从零开始 (Zeroing) ---
-    tf::Vector3 pos_3d = T_odom_base_to_base_3d.getOrigin();
-    tf::Quaternion q_3d = T_odom_base_to_base_3d.getRotation();
+    // 使用修正后的 T_Upright_Base 进行提取
+    tf::Vector3 pos_3d = T_Upright_Base.getOrigin();
+    tf::Quaternion q_3d = T_Upright_Base.getRotation();
     
     // 提取 Yaw
     double roll, pitch, yaw;
