@@ -2,11 +2,14 @@
     <arg name="ct_odom_source" default="$(optenv CT_ODOM_SOURCE fastlio)" />
     <arg name="ct_perception_sensor" default="$(optenv CT_PERCEPTION_SENSOR livox_mid360)" />
     
+    <arg name="odom_topic" default="/Odometry_base" />
+    
     <group if="$(eval arg('ct_odom_source') == 'fastlio' and arg('ct_perception_sensor') == 'livox_mid360')">
         
         <node pkg="fast_lio" type="fastlio_mapping" name="fastlio_mapping" 
               output="screen">
             <rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
+            <remap from="/Odometry_base" to="$(arg odom_topic)" />
         </node>
         
         <!-- 静态 TF: odom_2D -> odom_fastlio_base (让 FAST-LIO 的 odom 与 odom_2D 对齐) -->
